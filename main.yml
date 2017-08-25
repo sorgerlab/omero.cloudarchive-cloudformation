@@ -205,12 +205,12 @@ Resources:
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
-        - Effect: Allow
-          Principal:
-            Service:
-            - ec2.amazonaws.com
-          Action:
-          - sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              Service:
+              - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role'
 
@@ -219,7 +219,7 @@ Resources:
     Properties:
       Path: '/'
       Roles:
-      - !Ref IamRole
+        - !Ref IamRole
 
   EcsSecurityGroup:
     Condition: CreateNewSecurityGroup
@@ -298,9 +298,9 @@ Resources:
       SecurityGroups:
         - !If [ CreateNewSecurityGroup, !Ref EcsSecurityGroup, !Ref SecurityGroupId ]
       Listeners:
-      - LoadBalancerPort: 5432
-        InstancePort: 5432
-        Protocol: TCP
+        - LoadBalancerPort: 5432
+          InstancePort: 5432
+          Protocol: TCP
       HealthCheck:
         Target: TCP:5432
         HealthyThreshold: 3
@@ -340,9 +340,6 @@ Resources:
 
   PostgresService:
     Type: AWS::ECS::Service
-    DependsOn:
-      - ECSServiceRole
-      - PostgresECSLoadBalancer
     Properties:
       Cluster: !Ref ECSCluster
       DesiredCount: 1
@@ -352,8 +349,69 @@ Resources:
           LoadBalancerName: !Ref PostgresECSLoadBalancer
       Role: !Ref ECSServiceRole
       TaskDefinition: !Ref PostgresTaskDefinition
-
   # END Postgres
+
+  # START Redis
+  RedisECSLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      Subnets: !Ref SubnetIds
+      Scheme: internet-facing
+      SecurityGroups:
+        - !If [ CreateNewSecurityGroup, !Ref EcsSecurityGroup, !Ref SecurityGroupId ]
+      Listeners:
+        - LoadBalancerPort: 6379
+          InstancePort: 6379
+          Protocol: TCP
+      HealthCheck:
+        Target: TCP:6379
+        HealthyThreshold: 3
+        UnhealthyThreshold: 5
+        Interval: 30
+        Timeout: 5
+      # AccessLoggingPolicy:
+      #   S3BucketName:
+      #     Ref: S3LoggingBucket
+      #   S3BucketPrefix: Logs
+      #   Enabled: 'true'
+      #   EmitInterval: '60'
+    # DependsOn: S3LoggingBucketPolicy
+
+  RedisTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-redis
+      ContainerDefinitions:
+        - Name: redis
+          Cpu: 200
+          Essential: true
+          Image: dpwrussell/omero-redis
+          Memory: 200
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudwatchLogsGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: redis
+          PortMappings:
+            - ContainerPort: 6379
+              HostPort: 6379
+          Environment:
+            - Name: REDIS_PASSWORD
+              Value: redis
+
+  RedisService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LoadBalancers:
+        - ContainerName: redis
+          ContainerPort: 6379
+          LoadBalancerName: !Ref RedisECSLoadBalancer
+      Role: !Ref ECSServiceRole
+      TaskDefinition: !Ref RedisTaskDefinition
+  # END Redis
 
   # START OMERO-Master
   OmeroECSLoadBalancer:
@@ -364,12 +422,12 @@ Resources:
       SecurityGroups:
         - !If [ CreateNewSecurityGroup, !Ref EcsSecurityGroup, !Ref SecurityGroupId ]
       Listeners:
-      - LoadBalancerPort: 4064
-        InstancePort: 4064
-        Protocol: TCP
-      - LoadBalancerPort: 4063
-        InstancePort: 4063
-        Protocol: TCP
+        - LoadBalancerPort: 4064
+          InstancePort: 4064
+          Protocol: TCP
+        - LoadBalancerPort: 4063
+          InstancePort: 4063
+          Protocol: TCP
       HealthCheck:
         Target: TCP:4064
         HealthyThreshold: 3
@@ -396,8 +454,8 @@ Resources:
         - Name: omero-master
           Cpu: 1000
           Essential: true
-          Image: dpwrussell/omero.cloudarchive
-          Memory: 2000
+          Image: dpwrussell/omero.cloudarchive:init
+          Memory: 4000
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -413,26 +471,23 @@ Resources:
             - ContainerPort: 4064
               HostPort: 4064
           Environment:
-            - Name: DBNAME
+            - Name: CONFIG_omero_db_name
               Value: postgres
-            - Name: DBPASS
+            - Name: CONFIG_omero_db_pass
               Value: postgres
-            - Name: DBUSER
+            - Name: CONFIG_omero_db_user
               Value: postgres
-            - Name: PUBLIC_GROUP
-              Value: public-group
+            - Name: CONFIG_omero_web_public_enabled
+              Value: true
             - Name: ROOTPASS
               Value: omero
             - Name: S3_BUCKET
               Value: !Ref S3Bucket
-            - Name: DBHOST
+            - Name: CONFIG_omero_db_host
               Value: !GetAtt PostgresECSLoadBalancer.DNSName
 
   OmeroService:
     Type: AWS::ECS::Service
-    DependsOn:
-      - ECSServiceRole
-      - OmeroECSLoadBalancer
     Properties:
       Cluster: !Ref ECSCluster
       DesiredCount: 1
@@ -472,14 +527,14 @@ Resources:
 
   # END OMERO-RO
 
-  # START OMERO-Web
+  # START OMERO.web/nginx
   WebECSALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Scheme: internet-facing
       LoadBalancerAttributes:
-      - Key: idle_timeout.timeout_seconds
-        Value: 30
+        - Key: idle_timeout.timeout_seconds
+          Value: 30
       Subnets: !Ref SubnetIds
       SecurityGroups:
         - !If [ CreateNewSecurityGroup, !Ref EcsSecurityGroup, !Ref SecurityGroupId ]
@@ -488,42 +543,40 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
-      - Type: forward
-        TargetGroupArn: !Ref WebECSTG
+        - Type: forward
+          TargetGroupArn: !Ref WebTargetGroup
       LoadBalancerArn: !Ref WebECSALB
       Port: 80
       Protocol: HTTP
 
-  WebECSALBListenerRule:
-    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    DependsOn: WebALBListener
-    Properties:
-      Actions:
-      - Type: forward
-        TargetGroupArn: !Ref WebECSTG
-      Conditions:
-      - Field: path-pattern
-        Values: [ / ]
-      ListenerArn: !Ref WebALBListener
-      Priority: 1
+  # TODO Rely on DefaultAction in Listener instead for this catch all?
+  # WebALBListenerRuleNginx:
+  #   Type: AWS::ElasticLoadBalancingV2::ListenerRule
+  #   DependsOn: WebALBListener
+  #   Properties:
+  #     Actions:
+  #       - Type: forward
+  #         TargetGroupArn: !Ref WebTargetGroup
+  #     Conditions:
+  #       - Field: path-pattern
+  #         Values:
+  #           - /
+  #     ListenerArn: !Ref WebALBListener
+  #     Priority: 2
 
-  WebECSTG:
+  WebTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     DependsOn: WebECSALB
     Properties:
-      HealthCheckIntervalSeconds: 10
+      HealthCheckIntervalSeconds: 60
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 2
-      # TODO Potentially specify a less expensive path to load
-      HealthCheckPath: /webclient/
-      # TODO Use a route which definitely will not 302
+      # TODO A static resource instead?
+      HealthCheckPath: /webclient/login/
       Matcher:
-        HttpCode: 200,302
-      TargetGroupAttributes:
-        - Key: stickiness.enabled
-          Value: true
+        HttpCode: 200
       Port: 80
       Protocol: HTTP
       VpcId: !Ref VpcId
@@ -531,16 +584,12 @@ Resources:
   WebTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: !Sub ${AWS::StackName}-omero-web
-      Volumes:
-        - Name: OMERO_DATA
-          Host:
-            SourcePath: /mnt/OMERO_DATA
+      Family: !Sub ${AWS::StackName}-omero-nginx
       ContainerDefinitions:
-        - Name: omero-web
+        - Name: web
           Cpu: 500
           Essential: true
-          Image: dpwrussell/omero-grid-web
+          Image: dpwrussell/omero-web-extended
           Memory: 500
           LogConfiguration:
             LogDriver: awslogs
@@ -549,31 +598,288 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: omero-web
           PortMappings:
-            - ContainerPort: 8080
-              HostPort: 80
-            # - ContainerPort: 8443
-            #   HostPort: 443
+            - ContainerPort: 4080
+          #     HostPort: 4080
           Environment:
-            - Name: PUBLIC_GROUP
-              Value: public-group
+            - Name: CONFIG_omero_web_session__engine
+              Value: django.contrib.sessions.backends.cache
+            - Name: CONFIG_omero_web_caches
+              Value: !Sub '{"default": {"BACKEND": "django_redis.cache.RedisCache", "LOCATION": "redis://:redis@${RedisECSLoadBalancer.DNSName}:6379/0"}}'
+            - Name: CONFIG_omero_web_public_enabled
+              Value: "true"
+            - Name: CONFIG_omero_web_public_user
+              Value: public-user
+            - Name: CONFIG_omero_web_public_password
+              Value: omero
+            - Name: CONFIG_omero_web_public_url__filter
+              Value: "^/(?!webadmin|webclient/(action|logout|annotate_(file|tags|comment|rating|map)|script_ui|ome_tiff|figure_script)|webgateway/(archived_files|download_as))"
             - Name: OMEROHOST
               Value: !GetAtt OmeroECSLoadBalancer.DNSName
+        - Name: nginx
+          Cpu: 250
+          Essential: true
+          Image: dpwrussell/omero-nginx
+          Memory: 250
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudwatchLogsGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: omero-nginx
+          PortMappings:
+            - ContainerPort: 80
+          #     HostPort: 80
+            # - ContainerPort: 8443
+            #   HostPort: 443
+          Links:
+            - web
 
   WebService:
     Type: AWS::ECS::Service
     DependsOn:
-      - ECSServiceRole
       - WebALBListener
     Properties:
       Cluster: !Ref ECSCluster
       DesiredCount: 1
       LoadBalancers:
-        - ContainerName: omero-web
-          ContainerPort: 8080
-          TargetGroupArn: !Ref WebECSTG
+        - ContainerName: nginx
+          ContainerPort: 80
+          TargetGroupArn: !Ref WebTargetGroup
       Role: !Ref ECSServiceRole
       TaskDefinition: !Ref WebTaskDefinition
-  # END OMERO-Web
+  # END OMERO.web/nginx
+
+  # TODO Make microservices optional
+  # START omero-ms-thumbnail
+  # TODO what to use for healthcheck
+  WebALBListenerRuleMSThumbnail:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref MSThumbnailTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /*/render_thumbnail/*
+      ListenerArn: !Ref WebALBListener
+      Priority: 1
+
+  MSThumbnailTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      HealthCheckPath: /webclient/render_thumbnail/1
+      Matcher:
+        HttpCode: 200,302,404,401,402,403
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+
+  MSThumbnailTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-omero-ms-thumbnail
+      ContainerDefinitions:
+        - Name: ms-thumbnail
+          Cpu: 500
+          Essential: true
+          Image: dpwrussell/omero-ms-thumbnail
+          Memory: 500
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudwatchLogsGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: omero-ms-thumbnail
+          PortMappings:
+            - ContainerPort: 8080
+              # HostPort: 8080
+          Environment:
+            - Name: OMEROHOST
+              Value: !GetAtt OmeroECSLoadBalancer.DNSName
+            - Name: REDISHOST
+              Value: !GetAtt RedisECSLoadBalancer.DNSName
+            - Name: REDIS_PASSWORD
+              Value: redis
+
+  MSThumbnailService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - WebALBListener
+      - WebALBListenerRuleMSThumbnail
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LoadBalancers:
+        - ContainerName: ms-thumbnail
+          ContainerPort: 8080
+          TargetGroupArn: !Ref MSThumbnailTargetGroup
+      Role: !Ref ECSServiceRole
+      TaskDefinition: !Ref MSThumbnailTaskDefinition
+  # END omero-ms-thumbnail
+
+  # START omero-ms-image-region
+  # TODO what to use for healthcheck
+  WebALBListenerRuleMSImageRegion:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref MSImageRegionTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /*/render_image_region/*
+      ListenerArn: !Ref WebALBListener
+      Priority: 2
+
+  MSImageRegionTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      HealthCheckPath: /webclient/render_image_region/1/
+      Matcher:
+        HttpCode: 200,302,404,401,402,403
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+
+  MSImageRegionTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-omero-ms-image-region
+      ContainerDefinitions:
+        - Name: ms-image-region
+          Cpu: 500
+          Essential: true
+          Image: sorgerlab/omero-ms-image-region
+          Memory: 500
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudwatchLogsGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: omero-ms-image-region
+          PortMappings:
+            - ContainerPort: 8080
+              # HostPort: 8080
+          Environment:
+            - Name: OMEROHOST
+              Value: !GetAtt OmeroECSLoadBalancer.DNSName
+            - Name: REDISHOST
+              Value: !GetAtt RedisECSLoadBalancer.DNSName
+            - Name: REDIS_PASSWORD
+              Value: redis
+
+  MSImageRegionService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - WebALBListener
+      - WebALBListenerRuleMSImageRegion
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LoadBalancers:
+        - ContainerName: ms-image-region
+          ContainerPort: 8080
+          TargetGroupArn: !Ref MSImageRegionTargetGroup
+      Role: !Ref ECSServiceRole
+      TaskDefinition: !Ref MSImageRegionTaskDefinition
+  # END omero-ms-image-region
+
+  # START omero-ms-pixel-buffer
+  WebALBListenerRuleMSPixelBuffer:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref MSPixelBufferTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /tile/*
+      ListenerArn: !Ref WebALBListener
+      Priority: 3
+
+  MSPixelBufferTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      HealthCheckPath: /tile/1/1/1/1/1/1/1/1
+      Matcher:
+        HttpCode: 200,302,404,401,402,403
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+
+  MSPixelBufferTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-omero-ms-pixel-buffer
+      Volumes:
+        - Name: OMERO_DATA
+          Host:
+            SourcePath: /mnt/OMERO_DATA
+      ContainerDefinitions:
+        - Name: ms-pixel-buffer
+          Cpu: 500
+          Essential: true
+          Image: sorgerlab/omero-ms-pixel-buffer
+          Memory: 500
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudwatchLogsGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: omero-ms-pixel-buffer
+          MountPoints:
+            - ContainerPath: /OMERO
+              SourceVolume: OMERO_DATA
+              # TODO Can this be less permissive?
+              ReadOnly: false
+          PortMappings:
+            - ContainerPort: 8080
+              # HostPort: 8080
+          Environment:
+            - Name: OMEROHOST
+              Value: !GetAtt OmeroECSLoadBalancer.DNSName
+            - Name: REDISHOST
+              Value: !GetAtt RedisECSLoadBalancer.DNSName
+            - Name: REDIS_PASSWORD
+              Value: redis
+            - Name: DBHOST
+              Value: !GetAtt PostgresECSLoadBalancer.DNSName
+            - Name: DBPASSWORD
+              Value: postgres
+
+  MSPixelBufferService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - WebALBListener
+      - WebALBListenerRuleMSPixelBuffer
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LoadBalancers:
+        - ContainerName: ms-pixel-buffer
+          ContainerPort: 8080
+          TargetGroupArn: !Ref MSPixelBufferTargetGroup
+      Role: !Ref ECSServiceRole
+      TaskDefinition: !Ref MSPixelBufferTaskDefinition
+    # END omero-ms-pixel-buffer-ms
 
   ECSServiceRole:
     Type: AWS::IAM::Role
@@ -701,6 +1007,8 @@ Outputs:
     Value: !GetAtt PostgresECSLoadBalancer.DNSName
   OmeroDNSName:
     Value: !GetAtt OmeroECSLoadBalancer.DNSName
+  RedisDNSName:
+    Value: !GetAtt RedisECSLoadBalancer.DNSName
   WebDNSName:
     Value: !GetAtt WebECSALB.DNSName
 
