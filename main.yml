@@ -385,7 +385,7 @@ Resources:
         - Name: redis
           Cpu: 200
           Essential: true
-          Image: dpwrussell/omero-redis
+          Image: sorgerlab/omero-redis
           Memory: 200
           LogConfiguration:
             LogDriver: awslogs
@@ -454,7 +454,7 @@ Resources:
         - Name: omero-master
           Cpu: 1000
           Essential: true
-          Image: dpwrussell/omero.cloudarchive:init
+          Image: sorgerlab/omero.cloudarchive
           Memory: 4000
           LogConfiguration:
             LogDriver: awslogs
@@ -618,7 +618,7 @@ Resources:
         - Name: nginx
           Cpu: 250
           Essential: true
-          Image: dpwrussell/omero-nginx
+          Image: sorgerlab/omero-nginx
           Memory: 250
           LogConfiguration:
             LogDriver: awslogs
@@ -688,7 +688,7 @@ Resources:
         - Name: ms-thumbnail
           Cpu: 500
           Essential: true
-          Image: dpwrussell/omero-ms-thumbnail
+          Image: sorgerlab/omero-ms-thumbnail
           Memory: 500
           LogConfiguration:
             LogDriver: awslogs
