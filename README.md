@@ -1,12 +1,20 @@
 OMERO.cloudarchive
-------------------
+==================
 
+OMERO.cloudarchive can be used to provision the infrastructure for OMERO in a
+local or cloud environment. This mechanism can "hydrate" a previously created
+archive or be empty. Once running, data can be loaded/annotated/etc and then
+finally "dehydrated" into object storage.
 
+Instructions for deploying locally are available at:
+https://sorgerlab.github.io/omero.cloudarchive-docker/
+
+Instructions for deploying on AWS with CloudFormation locally follow.
 
 Cloudformation Deployment
 -------------------------
 
-Deploy the cloudformation script using the AWS Console
+Deploy the CloudFormation script using the AWS Console
 
 
 Prerequsitive Settings
@@ -28,11 +36,11 @@ Optionally:
 **Security Group:** Goto `VPC -> Security Groups`. Choose the desired security group and copy the `Group ID`. Without this a new, very permissisive security group will be automatically created for this stack.
 
 
-Launching the Cloudformation stack
+Launching the CloudFormation stack
 ----------------------------------
 
-The Cloudformation template is hosted on S3 and can be launched by passing
-its location to the AWS Console Cloudformation service as an argument. Clicking
+The CloudFormation template is hosted on S3 and can be launched by passing
+its location to the AWS Console CloudFormation service as an argument. Clicking
 on the below links for the correct region will do that for the latest version.
 
 ##### LaunchUSEast1
@@ -72,9 +80,9 @@ on the below links for the correct region will do that for the latest version.
 ##### LaunchCACentral1
 [<img src="http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/images/cloudformation-launch-stack-button.png">](https://console.aws.amazon.com/cloudformation/home?region=ca-central-1#/stacks/new?stackName=OMEROCloudArchive&templateURL=https://s3.amazonaws.com/omero.cloudarchive-cloudformation/master.yml)
 
-The link will present the AWS Cloudformation Console with the S3 template URL
+The link will present the AWS CloudFormation Console with the S3 template URL
 location prepopulated. Click `Next` to continue.
 
-This page presents the configuration options for the cloudformation template
+This page presents the configuration options for the CloudFormation template
 including those for the settings gathered above. Enter or choose the required
 options from above and any optional ones as well.
