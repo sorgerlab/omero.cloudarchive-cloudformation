@@ -7,7 +7,7 @@ archive or be empty. Once running, data can be loaded/annotated/etc and then
 finally "dehydrated" into object storage.
 
 Instructions for deploying locally are available at:
-https://sorgerlab.github.io/omero.cloudarchive-docker/
+[https://sorgerlab.github.io/omero.cloudarchive-docker/](https://sorgerlab.github.io/omero.cloudarchive-docker/)
 
 Instructions for deploying on AWS with CloudFormation locally follow.
 
