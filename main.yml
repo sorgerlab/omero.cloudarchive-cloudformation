@@ -40,21 +40,21 @@ Parameters:
     Type: String
     Description: >
       Specifies the EC2 instance type for your container instances.
-      Defaults to t2.medium
+      Defaults to t2.large
     AllowedValues: [t2.micro, t2.small, t2.medium, t2.large, m3.medium, m3.large,
       m3.xlarge, m3.2xlarge, m4.large, m4.xlarge, m4.2xlarge, m4.4xlarge, m4.10xlarge,
       c4.large, c4.xlarge, c4.2xlarge, c4.4xlarge, c4.8xlarge, c3.large, c3.xlarge,
       c3.2xlarge, c3.4xlarge, c3.8xlarge, r3.large, r3.xlarge, r3.2xlarge, r3.4xlarge,
       r3.8xlarge, i2.xlarge, i2.2xlarge, i2.4xlarge, i2.8xlarge]
-    Default: t2.medium
+    Default: t2.large
     ConstraintDescription: Must be a valid EC2 instance type.
 
   AsgMaxSize:
     Type: Number
     Description: >
       Specifies the number of instances to launch and register to the cluster.
-      Defaults to 1.
-    Default: 1
+      Defaults to 3.
+    Default: 3
 
   SecurityIngressFromPort:
     Type: Number
