@@ -15,26 +15,27 @@ echo "Launching stack: main.yml"
 aws cloudformation create-stack \
   --profile sudo \
   --capabilities CAPABILITY_IAM \
-  --stack-name omero-test-stack${STACK_NUMBER} \
+  --stack-name etl-pat \
   --template-body file://main.yml \
   --tags \
     Key=project,Value=lincs \
   --parameters \
-    ParameterKey=EcsInstanceType,ParameterValue=t2.large \
+    ParameterKey=EcsInstanceType,ParameterValue=t2.2xlarge \
     ParameterKey=VpcId,ParameterValue=vpc-77548c11 \
     ParameterKey=SubnetIds,ParameterValue=\"subnet-eed049c3,subnet-7b7a3332\" \
-    ParameterKey=AsgMaxSize,ParameterValue=3 \
+    ParameterKey=AsgMaxSize,ParameterValue=1 \
     ParameterKey=KeyName,ParameterValue=ec2_omero_dpwrussell \
-    ParameterKey=EFSOn,ParameterValue="EFS On" \
-    ParameterKey=S3Bucket,ParameterValue=s3://dpwr/d4 \
+    ParameterKey=EBSVolumeSizeForData,ParameterValue=1200 \
+    ParameterKey=EBSVolumeTypeForData,ParameterValue=gp2 \
     ParameterKey=Tag,ParameterValue=lincs
 
 
-  # ParameterKey=EBSVolumeSizeForData,ParameterValue=10 \
-  # ParameterKey=EBSVolumeTypeForData,ParameterValue=gp2 \
+  # ParameterKey=EFSOn,ParameterValue="EFS On" \
   # ParameterKey=SecurityGroupId,ParameterValue=sg-ced031b2 \
   # ParameterKey=DeviceNameForData,ParameterValue=/dev/sdm \
+  # ParameterKey=DeviceNameForData,ParameterValue=/dev/xvdm \
   # ParameterKey=SubnetIds,ParameterValue=\"subnet-eed049c3,subnet-7b7a3332,subnet-d954c482,subnet-06a50e3a\" \
+  # ParameterKey=S3Bucket,ParameterValue=s3://dpwr/d4 \
 
   # Deprecated
   # ParameterKey=EcsAmiId,ParameterValue=ami-b2df2ca4 \

@@ -1,3 +1,5 @@
+# aws s3 sync /OMERO/pat s3://etl-pat-staging/
+
 AWSTemplateFormatVersion: '2010-09-09'
 
 Description: >
@@ -41,7 +43,7 @@ Parameters:
     Description: >
       Specifies the EC2 instance type for your container instances.
       Defaults to t2.large
-    AllowedValues: [t2.micro, t2.small, t2.medium, t2.large, m3.medium, m3.large,
+    AllowedValues: [t2.micro, t2.small, t2.medium, t2.large, t2.2xlarge, m3.medium, m3.large,
       m3.xlarge, m3.2xlarge, m4.large, m4.xlarge, m4.2xlarge, m4.4xlarge, m4.10xlarge,
       c4.large, c4.xlarge, c4.2xlarge, c4.4xlarge, c4.8xlarge, c3.large, c3.xlarge,
       c3.2xlarge, c3.4xlarge, c3.8xlarge, r3.large, r3.xlarge, r3.2xlarge, r3.4xlarge,
@@ -213,6 +215,22 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role'
+        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+
+  # S3TaskRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service:
+  #             - ecs-tasks.amazonaws.com
+  #           Action:
+  #             - sts:AssumeRole
+  #     ManagedPolicyArns:
+  #       - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
 
   IamRoleInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -450,12 +468,13 @@ Resources:
         - Name: OMERO_DATA
           Host:
             SourcePath: /mnt/OMERO_DATA
+      # ExecutionRoleArn: !Ref S3TaskRole
       ContainerDefinitions:
         - Name: omero-master
-          Cpu: 1000
+          Cpu: 5000
           Essential: true
           Image: sorgerlab/omero.cloudarchive
-          Memory: 4000
+          Memory: 20000
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -972,6 +991,8 @@ Resources:
                 mkfs -t ext4 ${DeviceNameForData}
                 echo "${DeviceNameForData} /mnt/OMERO_DATA ext4 defaults,nofail 0 2" >> /etc/fstab
                 mount /mnt/OMERO_DATA
+                # Docker must be restarted or it can not see the EBS mount
+                service docker restart
               - !Ref AWS::NoValue
             - !Sub |
               # Configure ECS
